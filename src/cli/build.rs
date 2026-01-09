@@ -5,6 +5,9 @@ use crate::storage::paths::DarkerPaths;
 use clap::Args;
 use std::path::PathBuf;
 
+/// Valid container file names in order of preference
+pub const CONTAINER_FILE_NAMES: &[&str] = &["Darkerfile", "Dockerfile", "Containerfile"];
+
 /// Arguments for the `build` command
 #[derive(Args)]
 pub struct BuildArgs {
@@ -16,9 +19,9 @@ pub struct BuildArgs {
     #[arg(short, long)]
     pub tag: Option<String>,
 
-    /// Name of the Dockerfile
-    #[arg(short, long, default_value = "Dockerfile")]
-    pub file: String,
+    /// Name of the Dockerfile (auto-detects Darkerfile, Dockerfile, or Containerfile)
+    #[arg(short, long)]
+    pub file: Option<String>,
 
     /// Set build-time variables
     #[arg(long)]
@@ -53,15 +56,37 @@ pub struct BuildArgs {
     pub platform: Option<String>,
 }
 
+/// Find the container file in the build context
+fn find_container_file(context_path: &PathBuf, explicit_file: Option<&str>) -> anyhow::Result<String> {
+    // If explicitly specified, use that
+    if let Some(file) = explicit_file {
+        let path = context_path.join(file);
+        if path.exists() {
+            return Ok(file.to_string());
+        }
+        anyhow::bail!("Cannot find {} at {}", file, path.display());
+    }
+
+    // Auto-detect: try Darkerfile, Dockerfile, Containerfile in order
+    for name in CONTAINER_FILE_NAMES {
+        let path = context_path.join(name);
+        if path.exists() {
+            return Ok(name.to_string());
+        }
+    }
+
+    anyhow::bail!(
+        "Cannot find container file. Looked for: {}",
+        CONTAINER_FILE_NAMES.join(", ")
+    )
+}
+
 /// Execute the `build` command
 pub async fn execute(args: BuildArgs) -> anyhow::Result<()> {
     let paths = DarkerPaths::new()?;
     paths.ensure_directories()?;
 
-    let dockerfile_path = args.path.join(&args.file);
-    if !dockerfile_path.exists() {
-        anyhow::bail!("Cannot find Dockerfile at {}", dockerfile_path.display());
-    }
+    let container_file = find_container_file(&args.path, args.file.as_deref())?;
 
     // Parse build args
     let build_args: std::collections::HashMap<String, String> = args
@@ -80,13 +105,14 @@ pub async fn execute(args: BuildArgs) -> anyhow::Result<()> {
     let mut builder = ImageBuilder::new(&paths)?;
 
     if !args.quiet {
+        eprintln!("Using {} as container file", container_file);
         eprintln!("Sending build context to Darker...");
     }
 
     let image_id = builder
         .build(
             &args.path,
-            &args.file,
+            &container_file,
             args.tag.as_deref(),
             &build_args,
             args.no_cache,
