@@ -1,6 +1,6 @@
 //! Overlay-like filesystem for layer merging
 
-use crate::{DarkerError, Result};
+use crate::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
 

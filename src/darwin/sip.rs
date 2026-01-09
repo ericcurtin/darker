@@ -1,6 +1,5 @@
 //! System Integrity Protection (SIP) awareness
 
-use crate::Result;
 use std::path::Path;
 
 /// Check if System Integrity Protection is enabled

@@ -5,7 +5,6 @@ use crate::storage::paths::DarkerPaths;
 use crate::{DarkerError, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
 
 /// Volume information
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -2,7 +2,6 @@
 
 use crate::filesystem::volume::VolumeManager;
 use crate::storage::paths::DarkerPaths;
-use crate::DarkerError;
 use clap::{Args, Subcommand};
 
 /// Arguments for the `volume` command

@@ -45,7 +45,7 @@ impl ImageBuilder {
             return Err(DarkerError::Build("Empty Dockerfile".to_string()));
         }
 
-        let mut current_image_id: Option<String> = None;
+        let mut _current_image_id: Option<String> = None;
         let mut env_vars: HashMap<String, String> = build_args.clone();
         let mut workdir = "/".to_string();
         let mut cmd: Option<Vec<String>> = None;
@@ -63,7 +63,7 @@ impl ImageBuilder {
                     let image_ref = ImageReference::parse(&image)?;
                     let image_store = ImageStore::new(&self.paths)?;
 
-                    current_image_id = match image_store.find_image(&image_ref) {
+                    _current_image_id = match image_store.find_image(&image_ref) {
                         Some(id) => {
                             // Load layers from base image
                             let metadata = image_store.load_metadata(&id)?;
@@ -242,6 +242,7 @@ impl ImageBuilder {
 
 /// Parsed Dockerfile instruction
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Some fields are parsed but not yet used
 enum Instruction {
     From { image: String, alias: Option<String> },
     Run { command: String },

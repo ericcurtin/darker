@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 /// Root filesystem manager for a container
 pub struct RootFs {
     paths: DarkerPaths,
-    container_id: String,
     rootfs_path: PathBuf,
 }
 
@@ -19,7 +18,6 @@ impl RootFs {
         let rootfs_path = paths.container_rootfs(container_id);
         Ok(Self {
             paths: paths.clone(),
-            container_id: container_id.to_string(),
             rootfs_path,
         })
     }
@@ -107,19 +105,21 @@ impl RootFs {
             }
 
             // Skip if already exists
-            if full_container_path.exists() {
+            if full_container_path.exists() || full_container_path.is_symlink() {
                 continue;
             }
 
             // Check if host path exists
             if Path::new(host_path).exists() {
                 // Use symlink for rootless mode
-                symlink(host_path, &full_container_path).map_err(|e| {
-                    DarkerError::Io(std::io::Error::new(
-                        e.kind(),
-                        format!("Failed to create symlink {} -> {}: {}", container_path, host_path, e),
-                    ))
-                })?;
+                // Ignore errors for protected paths - container will use extracted binaries
+                if let Err(e) = symlink(host_path, &full_container_path) {
+                    // Only warn, don't fail - the container may still work with extracted binaries
+                    tracing::debug!(
+                        "Could not create symlink {} -> {}: {} (continuing anyway)",
+                        container_path, host_path, e
+                    );
+                }
             }
         }
 
@@ -163,10 +163,51 @@ impl RootFs {
                 // Create extraction directory
                 fs::create_dir_all(&layer_extracted)?;
 
-                // Extract tar
+                // Extract tar with error handling for permission issues
                 let file = fs::File::open(&layer_tar)?;
                 let mut archive = tar::Archive::new(file);
-                archive.unpack(&layer_extracted)?;
+
+                // Don't preserve permissions/ownership - macOS can't set Linux UIDs
+                archive.set_preserve_permissions(false);
+                archive.set_unpack_xattrs(false);
+
+                // Unpack each entry individually to handle errors gracefully
+                for entry_result in archive.entries()? {
+                    let mut entry = match entry_result {
+                        Ok(e) => e,
+                        Err(e) => {
+                            tracing::debug!("Skipping tar entry: {}", e);
+                            continue;
+                        }
+                    };
+
+                    // Get the path
+                    let path = match entry.path() {
+                        Ok(p) => p.to_path_buf(),
+                        Err(e) => {
+                            tracing::debug!("Skipping entry with invalid path: {}", e);
+                            continue;
+                        }
+                    };
+
+                    // Skip whiteout files (used by overlayfs)
+                    let path_str = path.to_string_lossy();
+                    if path_str.contains(".wh.") {
+                        continue;
+                    }
+
+                    let dest = layer_extracted.join(&path);
+
+                    // Create parent directory
+                    if let Some(parent) = dest.parent() {
+                        let _ = fs::create_dir_all(parent);
+                    }
+
+                    // Try to unpack, ignore errors for special files
+                    if let Err(e) = entry.unpack(&dest) {
+                        tracing::debug!("Could not unpack {}: {} (continuing)", path.display(), e);
+                    }
+                }
 
                 // Copy to rootfs
                 copy_dir_contents(&layer_extracted, &self.rootfs_path)?;
@@ -220,28 +261,37 @@ fn copy_dir_contents(src: &Path, dst: &Path) -> Result<()> {
     }
 
     for entry in fs::read_dir(src)? {
-        let entry = entry?;
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
 
-        let file_type = entry.file_type()?;
+        let file_type = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
 
         if file_type.is_dir() {
-            fs::create_dir_all(&dst_path)?;
-            copy_dir_contents(&src_path, &dst_path)?;
+            let _ = fs::create_dir_all(&dst_path);
+            let _ = copy_dir_contents(&src_path, &dst_path);
         } else if file_type.is_file() {
             // Don't overwrite symlinks
             if dst_path.is_symlink() {
                 continue;
             }
             if let Some(parent) = dst_path.parent() {
-                fs::create_dir_all(parent)?;
+                let _ = fs::create_dir_all(parent);
             }
-            fs::copy(&src_path, &dst_path)?;
+            // Ignore copy errors (permission issues, etc.)
+            let _ = fs::copy(&src_path, &dst_path);
         } else if file_type.is_symlink() {
-            let target = fs::read_link(&src_path)?;
-            if !dst_path.exists() {
-                symlink(&target, &dst_path)?;
+            if let Ok(target) = fs::read_link(&src_path) {
+                if !dst_path.exists() && !dst_path.is_symlink() {
+                    // Ignore symlink creation errors
+                    let _ = symlink(&target, &dst_path);
+                }
             }
         }
     }

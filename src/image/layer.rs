@@ -1,7 +1,7 @@
 //! Layer management for OCI images
 
 use crate::storage::paths::DarkerPaths;
-use crate::{DarkerError, Result};
+use crate::Result;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
 use std::io::{Read, Write};

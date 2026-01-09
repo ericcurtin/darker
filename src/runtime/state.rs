@@ -1,7 +1,6 @@
 //! Container state management
 
 use crate::storage::containers::ContainerState;
-use chrono::{DateTime, Utc};
 
 /// State machine for container lifecycle
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,6 +94,7 @@ impl ContainerEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
 
     #[test]
     fn test_state_transitions() {

@@ -39,7 +39,7 @@ pub fn apply_sandbox_profile(profile: &str) -> Result<()> {
     // For a production implementation, we'd use sandbox_compile_file
     // and sandbox_apply with proper error handling
 
-    let profile_c = CString::new(profile)
+    let _profile_c = CString::new(profile)
         .map_err(|_| DarkerError::Sandbox("Invalid profile string".to_string()))?;
 
     // In a real implementation, we'd call:

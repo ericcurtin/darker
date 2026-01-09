@@ -1,7 +1,6 @@
 //! posix_spawn wrappers for process creation
 
 use crate::{DarkerError, Result};
-use std::ffi::CString;
 use std::path::Path;
 
 /// High-level process spawner using posix_spawn
@@ -238,7 +237,7 @@ fn shell_escape(s: &str) -> String {
 /// Low-level posix_spawn wrapper
 #[cfg(target_os = "macos")]
 pub mod posix {
-    use libc::{c_char, c_int, pid_t, posix_spawn, posix_spawnattr_t};
+    use libc::{c_char, pid_t, posix_spawn};
     use std::ffi::CString;
     use std::ptr;
 

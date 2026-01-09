@@ -112,6 +112,18 @@ impl ImageStore {
                 if let Some(id) = index.tags.get(&with_latest) {
                     return Some(id.clone());
                 }
+
+                // Also try library/ prefix for Docker Hub official images
+                let with_library = format!("library/{}:latest", name_or_id);
+                if let Some(id) = index.tags.get(&with_library) {
+                    return Some(id.clone());
+                }
+            } else {
+                // Has a tag, try with library/ prefix
+                let with_library = format!("library/{}", name_or_id);
+                if let Some(id) = index.tags.get(&with_library) {
+                    return Some(id.clone());
+                }
             }
 
             // Check if it's a short ID

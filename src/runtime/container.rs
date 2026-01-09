@@ -2,12 +2,10 @@
 
 use crate::darwin::spawn::ProcessSpawner;
 use crate::runtime::sandbox::SandboxProfile;
-use crate::storage::containers::{ContainerConfig, ContainerState, ContainerStore};
+use crate::storage::containers::{ContainerConfig, ContainerStore};
 use crate::storage::paths::DarkerPaths;
 use crate::{DarkerError, Result};
-use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 /// Represents a container instance
 pub struct Container {

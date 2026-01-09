@@ -3,7 +3,6 @@
 use crate::storage::containers::ContainerStore;
 use crate::storage::images::ImageStore;
 use crate::storage::paths::DarkerPaths;
-use crate::{DarkerError, Result};
 use clap::Args;
 
 /// Arguments for the `rm` command

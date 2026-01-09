@@ -3,7 +3,7 @@
 use crate::runtime::container::Container;
 use crate::storage::containers::ContainerStore;
 use crate::storage::paths::DarkerPaths;
-use crate::{DarkerError, Result};
+use crate::DarkerError;
 use clap::Args;
 
 /// Arguments for the `exec` command

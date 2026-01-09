@@ -1,7 +1,7 @@
 //! Docker Registry HTTP API V2 client
 
 use crate::image::layer::LayerManager;
-use crate::image::oci::{self, ImageManifest, ImageReference, OciImageConfig};
+use crate::image::oci::{ImageIndex, ImageManifest, ImageReference, OciImageConfig};
 use crate::storage::images::ImageStore;
 use crate::storage::paths::DarkerPaths;
 use crate::{DarkerError, Result};
@@ -127,7 +127,7 @@ impl RegistryClient {
         Ok(None)
     }
 
-    /// Fetch image manifest
+    /// Fetch image manifest (handles manifest lists/indexes for multi-platform images)
     async fn fetch_manifest(
         &self,
         reference: &ImageReference,
@@ -141,10 +141,14 @@ impl RegistryClient {
         );
 
         let mut headers = HeaderMap::new();
+        // Accept both single manifests and manifest lists
         headers.insert(
             ACCEPT,
             HeaderValue::from_static(
-                "application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json",
+                "application/vnd.docker.distribution.manifest.v2+json, \
+                 application/vnd.oci.image.manifest.v1+json, \
+                 application/vnd.docker.distribution.manifest.list.v2+json, \
+                 application/vnd.oci.image.index.v1+json",
             ),
         );
 
@@ -156,7 +160,7 @@ impl RegistryClient {
             );
         }
 
-        let response = self.client.get(&url).headers(headers).send().await?;
+        let response = self.client.get(&url).headers(headers.clone()).send().await?;
 
         if !response.status().is_success() {
             return Err(DarkerError::Registry(format!(
@@ -165,8 +169,85 @@ impl RegistryClient {
             )));
         }
 
-        let manifest: ImageManifest = response.json().await?;
-        Ok(manifest)
+        // Get the content type to determine what we received
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+
+        let body = response.text().await?;
+
+        // Check if this is a manifest list/index
+        if content_type.contains("manifest.list") || content_type.contains("image.index") {
+            let index: ImageIndex = serde_json::from_str(&body)
+                .map_err(|e| DarkerError::Registry(format!("Failed to parse manifest list: {}", e)))?;
+
+            // Find the manifest for our platform (macOS/darwin)
+            let arch = get_host_arch();
+            let platform_manifest = index
+                .manifests
+                .iter()
+                .find(|m| {
+                    if let Some(ref platform) = m.platform {
+                        // Look for linux (most containers are linux-based) or darwin
+                        // Prefer linux since macOS containers aren't common
+                        (platform.os == "linux" || platform.os == "darwin")
+                            && platform.architecture == arch
+                    } else {
+                        false
+                    }
+                })
+                .or_else(|| {
+                    // Fallback: find any manifest for our arch
+                    index.manifests.iter().find(|m| {
+                        m.platform
+                            .as_ref()
+                            .map(|p| p.architecture == arch)
+                            .unwrap_or(false)
+                    })
+                })
+                .or_else(|| {
+                    // Final fallback: just use the first one
+                    index.manifests.first()
+                })
+                .ok_or_else(|| DarkerError::Registry("No suitable manifest found in index".to_string()))?;
+
+            // Fetch the actual manifest by digest
+            let manifest_url = format!(
+                "{}/v2/{}/manifests/{}",
+                reference.registry_url(),
+                reference.repository,
+                platform_manifest.digest
+            );
+
+            // Update headers to only accept single manifests
+            headers.insert(
+                ACCEPT,
+                HeaderValue::from_static(
+                    "application/vnd.docker.distribution.manifest.v2+json, \
+                     application/vnd.oci.image.manifest.v1+json",
+                ),
+            );
+
+            let manifest_response = self.client.get(&manifest_url).headers(headers).send().await?;
+
+            if !manifest_response.status().is_success() {
+                return Err(DarkerError::Registry(format!(
+                    "Failed to fetch platform manifest: {}",
+                    manifest_response.status()
+                )));
+            }
+
+            let manifest: ImageManifest = manifest_response.json().await?;
+            Ok(manifest)
+        } else {
+            // It's already a single manifest
+            let manifest: ImageManifest = serde_json::from_str(&body)
+                .map_err(|e| DarkerError::Registry(format!("Failed to parse manifest: {}", e)))?;
+            Ok(manifest)
+        }
     }
 
     /// Fetch image config
@@ -259,6 +340,17 @@ impl RegistryClient {
         }
 
         Ok(())
+    }
+}
+
+/// Get the host architecture in OCI format
+fn get_host_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        "arm" => "arm",
+        "x86" => "386",
+        arch => arch,
     }
 }
 

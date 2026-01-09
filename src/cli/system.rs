@@ -156,7 +156,7 @@ pub async fn execute(args: SystemArgs) -> anyhow::Result<()> {
             println!();
             println!("Total reclaimed space: {}", format_size(total_space));
         }
-        SystemCommands::Df(df_args) => {
+        SystemCommands::Df(_df_args) => {
             let container_store = ContainerStore::new(&paths)?;
             let image_store = ImageStore::new(&paths)?;
 
