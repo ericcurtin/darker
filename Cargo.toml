@@ -1,0 +1,43 @@
+[package]
+name = "darker"
+version = "0.1.0"
+edition = "2021"
+description = "A Docker-like container runtime for macOS using native Darwin APIs"
+license = "Apache-2.0"
+repository = "https://github.com/ericcurtin/darker"
+readme = "README.md"
+keywords = ["container", "docker", "macos", "darwin", "oci"]
+categories = ["command-line-utilities", "virtualization"]
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.11", features = ["json", "stream"] }
+sha2 = "0.10"
+flate2 = "1"
+tar = "0.4"
+libc = "0.2"
+nix = { version = "0.27", features = ["process", "signal", "fs"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dirs = "5"
+oci-spec = "0.6"
+futures-util = "0.3"
+async-compression = { version = "0.4", features = ["tokio", "gzip"] }
+tokio-util = { version = "0.7", features = ["io"] }
+base64 = "0.21"
+hex = "0.4"
+rand = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "darker"
+path = "src/main.rs"
