@@ -78,19 +78,27 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
 
     // Check if image exists locally, if not try to pull it
     let image_store = crate::storage::images::ImageStore::new(&paths)?;
-    let image_ref = crate::image::oci::ImageReference::parse(&args.image)?;
 
-    let image_id = match image_store.find_image(&image_ref) {
-        Some(id) => id,
-        None => {
-            eprintln!("Unable to find image '{}' locally", args.image);
-            eprintln!("Pulling from registry...");
+    // Special handling for scratch image - it's a virtual empty image
+    let is_scratch = args.image == "scratch";
 
-            // Pull the image
-            let registry = crate::image::registry::RegistryClient::new()?;
-            let pulled_id = registry.pull(&image_ref, &paths).await?;
-            eprintln!("Successfully pulled {}", args.image);
-            pulled_id
+    let image_id = if is_scratch {
+        // scratch is a virtual empty image with no layers
+        "scratch".to_string()
+    } else {
+        let image_ref = crate::image::oci::ImageReference::parse(&args.image)?;
+        match image_store.find_image(&image_ref) {
+            Some(id) => id,
+            None => {
+                eprintln!("Unable to find image '{}' locally", args.image);
+                eprintln!("Pulling from registry...");
+
+                // Pull the image
+                let registry = crate::image::registry::RegistryClient::new()?;
+                let pulled_id = registry.pull(&image_ref, &paths).await?;
+                eprintln!("Successfully pulled {}", args.image);
+                pulled_id
+            }
         }
     };
 
@@ -105,8 +113,12 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     let container_id = uuid::Uuid::new_v4().to_string();
     let short_id = &container_id[..12];
 
-    // Load image config
-    let image_config = image_store.load_config(&image_id)?;
+    // Load image config (scratch has no config, use defaults)
+    let image_config = if is_scratch {
+        crate::storage::images::ImageConfig::default()
+    } else {
+        image_store.load_config(&image_id)?
+    };
 
     // Determine command to run
     let cmd = if !args.command.is_empty() {

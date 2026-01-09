@@ -28,13 +28,30 @@ impl ProcessSpawner {
         }
 
         // Build the command to run within the container's rootfs
-        let container_bin = rootfs.join(command[0].trim_start_matches('/'));
+        let cmd_path = &command[0];
 
-        let mut cmd = if container_bin.exists() {
-            tokio::process::Command::new(&container_bin)
+        let resolved_bin = if cmd_path.starts_with('/') {
+            // Absolute path - look in rootfs
+            let container_bin = rootfs.join(cmd_path.trim_start_matches('/'));
+            if container_bin.exists() {
+                Some(container_bin)
+            } else {
+                None
+            }
+        } else {
+            // Relative command - search through PATH directories in rootfs
+            let search_paths = ["bin", "usr/bin", "usr/local/bin", "sbin", "usr/sbin"];
+            search_paths
+                .iter()
+                .map(|dir| rootfs.join(dir).join(cmd_path))
+                .find(|p| p.exists())
+        };
+
+        let mut cmd = if let Some(bin_path) = resolved_bin {
+            tokio::process::Command::new(&bin_path)
         } else {
             // Fall back to system command
-            tokio::process::Command::new(&command[0])
+            tokio::process::Command::new(cmd_path)
         };
 
         // Add arguments
@@ -143,11 +160,29 @@ impl ProcessSpawner {
         }
 
         // Build the command string
-        let container_bin = rootfs.join(command[0].trim_start_matches('/'));
-        let actual_cmd = if container_bin.exists() {
-            container_bin.to_string_lossy().to_string()
+        let cmd_path = &command[0];
+
+        let resolved_bin = if cmd_path.starts_with('/') {
+            // Absolute path - look in rootfs
+            let container_bin = rootfs.join(cmd_path.trim_start_matches('/'));
+            if container_bin.exists() {
+                Some(container_bin)
+            } else {
+                None
+            }
         } else {
-            command[0].clone()
+            // Relative command - search through PATH directories in rootfs
+            let search_paths = ["bin", "usr/bin", "usr/local/bin", "sbin", "usr/sbin"];
+            search_paths
+                .iter()
+                .map(|dir| rootfs.join(dir).join(cmd_path))
+                .find(|p| p.exists())
+        };
+
+        let actual_cmd = if let Some(bin_path) = resolved_bin {
+            bin_path.to_string_lossy().to_string()
+        } else {
+            cmd_path.clone()
         };
 
         let container_workdir = rootfs.join(workdir.trim_start_matches('/'));
