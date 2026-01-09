@@ -1,5 +1,6 @@
 //! posix_spawn wrappers for process creation
 
+use crate::darwin::chroot::can_chroot;
 use crate::{DarkerError, Result};
 use std::path::Path;
 
@@ -27,32 +28,49 @@ impl ProcessSpawner {
             return Err(DarkerError::Spawn("No command specified".to_string()));
         }
 
-        // Build the command to run within the container's rootfs
+        let use_chroot = can_chroot();
         let cmd_path = &command[0];
 
-        let resolved_bin = if cmd_path.starts_with('/') {
-            // Absolute path - look in rootfs
-            let container_bin = rootfs.join(cmd_path.trim_start_matches('/'));
-            if container_bin.exists() {
-                Some(container_bin)
+        // When using chroot, we use container-relative paths
+        // Otherwise, we resolve to host-absolute paths
+        let (executable, container_workdir) = if use_chroot {
+            // With chroot, use paths relative to container root
+            let exec_path = if cmd_path.starts_with('/') {
+                cmd_path.clone()
             } else {
-                None
-            }
+                // Search PATH directories
+                let search_paths = ["/bin", "/usr/bin", "/usr/local/bin", "/sbin", "/usr/sbin"];
+                let found = search_paths
+                    .iter()
+                    .map(|dir| format!("{}/{}", dir, cmd_path))
+                    .find(|p| rootfs.join(p.trim_start_matches('/')).exists());
+                found.unwrap_or_else(|| format!("/usr/bin/{}", cmd_path))
+            };
+            let work = workdir.to_string();
+            (exec_path, work)
         } else {
-            // Relative command - search through PATH directories in rootfs
-            let search_paths = ["bin", "usr/bin", "usr/local/bin", "sbin", "usr/sbin"];
-            search_paths
-                .iter()
-                .map(|dir| rootfs.join(dir).join(cmd_path))
-                .find(|p| p.exists())
+            // Without chroot, resolve to host-absolute paths
+            let resolved_bin = if cmd_path.starts_with('/') {
+                let container_bin = rootfs.join(cmd_path.trim_start_matches('/'));
+                if container_bin.exists() {
+                    Some(container_bin.to_string_lossy().to_string())
+                } else {
+                    None
+                }
+            } else {
+                let search_paths = ["bin", "usr/bin", "usr/local/bin", "sbin", "usr/sbin"];
+                search_paths
+                    .iter()
+                    .map(|dir| rootfs.join(dir).join(cmd_path))
+                    .find(|p| p.exists())
+                    .map(|p| p.to_string_lossy().to_string())
+            };
+            let exec_path = resolved_bin.unwrap_or_else(|| cmd_path.clone());
+            let work = rootfs.join(workdir.trim_start_matches('/')).to_string_lossy().to_string();
+            (exec_path, work)
         };
 
-        let mut cmd = if let Some(bin_path) = resolved_bin {
-            tokio::process::Command::new(&bin_path)
-        } else {
-            // Fall back to system command
-            tokio::process::Command::new(cmd_path)
-        };
+        let mut cmd = tokio::process::Command::new(&executable);
 
         // Add arguments
         if command.len() > 1 {
@@ -66,11 +84,37 @@ impl ProcessSpawner {
         }
 
         // Set working directory
-        let container_workdir = rootfs.join(workdir.trim_start_matches('/'));
-        if container_workdir.exists() {
-            cmd.current_dir(&container_workdir);
-        } else {
-            cmd.current_dir(rootfs);
+        if !use_chroot {
+            if Path::new(&container_workdir).exists() {
+                cmd.current_dir(&container_workdir);
+            } else {
+                cmd.current_dir(rootfs);
+            }
+        }
+
+        // Set up chroot if running as root
+        if use_chroot {
+            let rootfs_path = rootfs.to_path_buf();
+            let workdir_for_chroot = workdir.to_string();
+            unsafe {
+                cmd.pre_exec(move || {
+                    // chroot to rootfs
+                    let path_cstr = std::ffi::CString::new(rootfs_path.to_string_lossy().as_bytes())
+                        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid path"))?;
+                    if libc::chroot(path_cstr.as_ptr()) != 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    // chdir to workdir
+                    let workdir_cstr = std::ffi::CString::new(workdir_for_chroot.as_bytes())
+                        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid workdir"))?;
+                    if libc::chdir(workdir_cstr.as_ptr()) != 0 {
+                        // Fall back to root if workdir doesn't exist
+                        let root_cstr = std::ffi::CString::new("/").unwrap();
+                        libc::chdir(root_cstr.as_ptr());
+                    }
+                    Ok(())
+                });
+            }
         }
 
         // Configure I/O

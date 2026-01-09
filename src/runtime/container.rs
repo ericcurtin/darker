@@ -1,5 +1,6 @@
 //! Container lifecycle management
 
+use crate::darwin::chroot::can_chroot;
 use crate::darwin::spawn::ProcessSpawner;
 use crate::runtime::sandbox::SandboxProfile;
 use crate::storage::containers::{ContainerConfig, ContainerStore};
@@ -53,8 +54,19 @@ impl Container {
         let log_path = self.paths.container_log(&self.config.id);
 
         // Prepare environment
+        // When running with chroot (as root), use container-relative paths
+        // Otherwise, use host-absolute paths pointing into the rootfs
+        let (home_value, tmp_value) = if can_chroot() {
+            ("/root".to_string(), "/tmp".to_string())
+        } else {
+            (
+                rootfs.join("root").to_string_lossy().to_string(),
+                rootfs.join("tmp").to_string_lossy().to_string(),
+            )
+        };
         let mut env: Vec<(String, String)> = vec![
-            ("HOME".to_string(), "/root".to_string()),
+            ("HOME".to_string(), home_value),
+            ("TMPDIR".to_string(), tmp_value),
             ("PATH".to_string(), "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string()),
             ("TERM".to_string(), std::env::var("TERM").unwrap_or_else(|_| "xterm".to_string())),
             ("HOSTNAME".to_string(), self.config.hostname.clone()),
@@ -114,8 +126,19 @@ impl Container {
         let pid_path = self.paths.container_pid(&self.config.id);
 
         // Prepare environment
+        // When running with chroot (as root), use container-relative paths
+        // Otherwise, use host-absolute paths pointing into the rootfs
+        let (home_value, tmp_value) = if can_chroot() {
+            ("/root".to_string(), "/tmp".to_string())
+        } else {
+            (
+                rootfs.join("root").to_string_lossy().to_string(),
+                rootfs.join("tmp").to_string_lossy().to_string(),
+            )
+        };
         let mut env_args = Vec::new();
-        env_args.push(format!("HOME=/root"));
+        env_args.push(format!("HOME={}", home_value));
+        env_args.push(format!("TMPDIR={}", tmp_value));
         env_args.push(format!("PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"));
         env_args.push(format!("HOSTNAME={}", self.config.hostname));
         for e in &self.config.env {
@@ -217,8 +240,19 @@ impl Container {
         let workdir = workdir.unwrap_or(&self.config.working_dir);
 
         // Prepare environment
+        // When running with chroot (as root), use container-relative paths
+        // Otherwise, use host-absolute paths pointing into the rootfs
+        let (home_value, tmp_value) = if can_chroot() {
+            ("/root".to_string(), "/tmp".to_string())
+        } else {
+            (
+                rootfs.join("root").to_string_lossy().to_string(),
+                rootfs.join("tmp").to_string_lossy().to_string(),
+            )
+        };
         let mut full_env: Vec<(String, String)> = vec![
-            ("HOME".to_string(), "/root".to_string()),
+            ("HOME".to_string(), home_value),
+            ("TMPDIR".to_string(), tmp_value),
             ("PATH".to_string(), "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string()),
             ("TERM".to_string(), std::env::var("TERM").unwrap_or_else(|_| "xterm".to_string())),
             ("HOSTNAME".to_string(), self.config.hostname.clone()),
