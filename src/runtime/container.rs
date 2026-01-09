@@ -2,7 +2,6 @@
 
 use crate::darwin::chroot::can_chroot;
 use crate::darwin::spawn::ProcessSpawner;
-use crate::runtime::sandbox::SandboxProfile;
 use crate::storage::containers::{ContainerConfig, ContainerStore};
 use crate::storage::paths::DarkerPaths;
 use crate::{DarkerError, Result};
@@ -90,10 +89,6 @@ impl Container {
             full_cmd.push("/bin/sh".to_string());
         }
 
-        // Create sandbox profile
-        let sandbox = SandboxProfile::new(&self.config.id, &rootfs)?;
-        let profile_path = sandbox.write_profile(&self.paths)?;
-
         // Spawn process
         let spawner = ProcessSpawner::new();
         let exit_code = spawner
@@ -102,7 +97,6 @@ impl Container {
                 &rootfs,
                 &self.config.working_dir,
                 &env,
-                Some(&profile_path),
                 tty,
                 interactive,
                 Some(&log_path),
@@ -156,10 +150,6 @@ impl Container {
             full_cmd.push("/bin/sh".to_string());
         }
 
-        // Create sandbox profile
-        let sandbox = SandboxProfile::new(&self.config.id, &rootfs)?;
-        let profile_path = sandbox.write_profile(&self.paths)?;
-
         // Spawn detached process
         let spawner = ProcessSpawner::new();
         let pid = spawner
@@ -168,7 +158,6 @@ impl Container {
                 &rootfs,
                 &self.config.working_dir,
                 &env_args,
-                Some(&profile_path),
                 &log_path,
                 &pid_path,
             )
@@ -270,10 +259,6 @@ impl Container {
             }
         }
 
-        // Create sandbox profile
-        let sandbox = SandboxProfile::new(&self.config.id, &rootfs)?;
-        let profile_path = sandbox.write_profile(&self.paths)?;
-
         // Spawn process
         let spawner = ProcessSpawner::new();
         spawner
@@ -282,7 +267,6 @@ impl Container {
                 &rootfs,
                 workdir,
                 &full_env,
-                Some(&profile_path),
                 tty,
                 interactive,
                 None,

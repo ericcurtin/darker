@@ -97,7 +97,7 @@ pub async fn execute(args: SystemArgs) -> anyhow::Result<()> {
             println!("Architecture: {}", std::env::consts::ARCH);
             println!("Kernel Version: {}", get_kernel_version());
             println!("Network: host");
-            println!("Security Options: sandbox (seatbelt)");
+            println!("Security Options: chroot (when running as root)");
         }
         SystemCommands::Prune(prune_args) => {
             if !prune_args.force {

@@ -2,14 +2,14 @@
 
 A Docker-like container runtime for macOS using native Darwin APIs.
 
-Darker provides a familiar Docker-compatible CLI for running containers on macOS without requiring a Linux VM. It uses macOS-native features like sandbox profiles and symlinks to create lightweight container environments.
+Darker provides a familiar Docker-compatible CLI for running containers on macOS without requiring a Linux VM.
 
 ## Features
 
 - **Docker-compatible CLI** - Familiar commands like `run`, `build`, `pull`, `exec`
 - **OCI image support** - Pull and run images from Docker Hub and other OCI registries
 - **Native macOS** - Runs directly on Darwin
-- **Rootless by default** - Runs without root privileges using symlinks and sandbox profiles
+- **Rootless by default** - Runs without root privileges
 - **Chroot isolation** - Full filesystem isolation
 - **Volume mounts** - Bind mount host directories into containers
 

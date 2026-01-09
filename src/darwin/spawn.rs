@@ -19,7 +19,6 @@ impl ProcessSpawner {
         rootfs: &Path,
         workdir: &str,
         env: &[(String, String)],
-        _sandbox_profile: Option<&Path>,
         tty: bool,
         interactive: bool,
         log_path: Option<&Path>,
@@ -195,7 +194,6 @@ impl ProcessSpawner {
         rootfs: &Path,
         workdir: &str,
         env: &[String],
-        _sandbox_profile: Option<&Path>,
         log_path: &Path,
         pid_path: &Path,
     ) -> Result<u32> {
