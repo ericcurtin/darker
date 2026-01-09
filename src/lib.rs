@@ -77,3 +77,9 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Application name
 pub const APP_NAME: &str = "darker";
+
+/// Length of short ID used for display
+pub const SHORT_ID_LENGTH: usize = 12;
+
+/// GZIP magic bytes
+pub const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];

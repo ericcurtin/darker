@@ -15,7 +15,7 @@ impl DarkerPaths {
         let home = dirs::home_dir().ok_or_else(|| {
             DarkerError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                "Could not find home directory",
+                "Could not determine user home directory. Please ensure HOME environment variable is set.",
             ))
         })?;
 

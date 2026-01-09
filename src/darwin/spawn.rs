@@ -143,9 +143,6 @@ impl ProcessSpawner {
             return Err(DarkerError::Spawn("No command specified".to_string()));
         }
 
-        // Build environment string
-        let env_str = env.join(" ");
-
         // Build the command string
         let container_bin = rootfs.join(command[0].trim_start_matches('/'));
         let actual_cmd = if container_bin.exists() {
@@ -161,19 +158,42 @@ impl ProcessSpawner {
             rootfs.to_path_buf()
         };
 
+        // Build shell-escaped command
+        let escaped_cmd = shell_escape(&actual_cmd);
+        let escaped_args: Vec<String> = command[1..]
+            .iter()
+            .map(|arg| shell_escape(arg))
+            .collect();
+        let escaped_workdir = shell_escape(&work_dir.to_string_lossy());
+        let escaped_logpath = shell_escape(&log_path.to_string_lossy());
+
+        // Build environment export statements
+        let env_exports: Vec<String> = env
+            .iter()
+            .filter_map(|e| {
+                if let Some((key, value)) = e.split_once('=') {
+                    Some(format!("export {}={}", shell_escape(key), shell_escape(value)))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let env_str = if env_exports.is_empty() {
+            String::new()
+        } else {
+            format!("{} && ", env_exports.join(" && "))
+        };
+
         // Use nohup and shell to run in background
         let mut cmd = tokio::process::Command::new("/bin/sh");
         cmd.arg("-c");
         cmd.arg(format!(
-            "cd {} && {} {} >> {} 2>&1 & echo $!",
-            work_dir.display(),
+            "cd {} && {}{} {} >> {} 2>&1 & echo $!",
+            escaped_workdir,
             env_str,
-            if command.len() > 1 {
-                format!("{} {}", actual_cmd, command[1..].join(" "))
-            } else {
-                actual_cmd
-            },
-            log_path.display()
+            escaped_cmd,
+            escaped_args.join(" "),
+            escaped_logpath
         ));
 
         cmd.stdout(std::process::Stdio::piped());
@@ -200,6 +220,19 @@ impl Default for ProcessSpawner {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Escape a string for safe use in shell commands
+fn shell_escape(s: &str) -> String {
+    // If the string is empty, return empty quotes
+    if s.is_empty() {
+        return "''".to_string();
+    }
+
+    // Use single quotes, which is the safest escaping method
+    // Replace any single quotes with '\'' (end quote, escaped quote, start quote)
+    let escaped = s.replace('\'', "'\\''");
+    format!("'{}'", escaped)
 }
 
 /// Low-level posix_spawn wrapper

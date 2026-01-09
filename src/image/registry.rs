@@ -246,7 +246,7 @@ impl RegistryClient {
         let bytes = response.bytes().await?;
 
         // Decompress if gzipped
-        if bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b {
+        if bytes.len() >= 2 && bytes[0] == crate::GZIP_MAGIC[0] && bytes[1] == crate::GZIP_MAGIC[1] {
             use flate2::read::GzDecoder;
             use std::io::Read;
 
